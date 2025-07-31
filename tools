@@ -1,0 +1,56 @@
+from agents import Agent, Runner, OpenAIChatCompletionsModel, FunctionTool, RunContextWrapper
+from openai import AsyncOpenAI
+from typing_extensions import Any
+from pydantic import BaseModel
+
+
+model="gemini-1.5-pro"
+google_api_key = "..."
+google_base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
+
+
+google_client = AsyncOpenAI(base_url=google_base_url, api_key=google_api_key)
+gemini_model = OpenAIChatCompletionsModel(model=model, openai_client=google_client)
+
+
+class FunctionArgs(BaseModel):
+    location: str
+
+
+async def fetch_weather(ctx: RunContextWrapper[Any], args: str) -> str:
+    """Fetch the weather for a given location.
+    Args:
+        location: The location to fetch the weather for.
+        :param args:
+        :param ctx:
+    """
+    print(ctx)
+    parsed = FunctionArgs.model_validate_json(args)
+    print(parsed)
+    return "hot"
+
+
+tool = FunctionTool(
+    name="fetch_weather",
+    description="Fetch the weather for a given location",
+    params_json_schema=FunctionArgs.model_json_schema(),
+    on_invoke_tool=fetch_weather,
+)
+
+agent_1 = Agent(name="math", instructions="Specialist agent for math questions", model=gemini_model)
+agent_2 = Agent(name="science", instructions="Specialist agent for science questions", model=gemini_model)
+agent_3 = Agent(name="computer", instructions="Specialist agent for computer questions", model=gemini_model)
+
+triage_agent = Agent(
+    name="Triage Agent",
+    instructions="You determine which agent to use based on the user's homework question and question about weather",
+    handoffs=[agent_1, agent_2, agent_3],
+    tools=[tool],
+    model=gemini_model
+)
+
+result = Runner.run_sync(triage_agent, "What is weather of mycity?")
+print(result.final_output)
+
+result = Runner.run_sync(triage_agent, "What is formula of water?")
+print(result.final_output)
